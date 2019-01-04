@@ -1,0 +1,107 @@
+using PandjiPertiwi.Models;
+using PandjiPertiwi.DTO;
+using PetaPoco;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web;
+using connStringPandji;
+using System.Activities.Statements;
+
+namespace PandjiPertiwi.Models
+{
+    public class CustomerModel 
+    {
+        public object ListCustomerPage(DatatablesConstruction pageRequest,String searchtext = "")
+        {
+            try
+            {
+
+                var query = new Sql(@"SELECT * FROM(SELECT ROW_NUMBER() OVER(ORDER BY CreateDate Desc) AS NomorUrut, FullName, Gender, PlaceBirth, DateBirth, HandPhoneNumber, Email, Occupation, Address,CreateDate FROM Customer) As C ");
+
+                if (searchtext != "")
+                {
+                    query.Append(" WHERE (FullName like '%" + searchtext + "%' OR Gender like '%" + searchtext + "%' OR PlaceBirth like '%" + searchtext + "%'  OR DateBirth like '%" + searchtext + "%' OR Email like '%" + searchtext + "%' OR Occupation like '%" + searchtext + "%' OR Address like '%" + searchtext + "%' OR Nationality like '%" + searchtext + "%' " +
+                        "OR Address like '%" + searchtext + "%' OR HandphoneNumber like '%" + searchtext + "%')");
+                }
+                var orderBy = GetOrderByClausecustomer(pageRequest);
+                if (!string.IsNullOrEmpty(orderBy))
+                {
+                    query.Append("ORDER BY " + orderBy);
+                }
+
+                using (var db = new PetaPoco.Database("connStringPandji"))
+                {
+                    var startPage = (pageRequest.DisplayLength == 0) ? 1 : pageRequest.DisplayStart / pageRequest.DisplayLength + 1;
+                   
+                    var petaPocoPage = db.Page<CustomerViewDTO>(startPage, pageRequest.DisplayLength, query);
+
+                    return new
+                    {
+                        draw = pageRequest.Echo,
+                        recordsFiltered = petaPocoPage.TotalItems,
+                        recordsTotal = petaPocoPage.TotalItems,
+                        data = petaPocoPage.Items
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        private static string GetOrderByClausecustomer(DatatablesConstruction pageRequest)
+        {
+            var sortColumn = "";
+
+            switch (pageRequest.SortCol)
+            {
+                case "NomorUrut":
+                    sortColumn = "NomorUrut";
+                    break;
+                case "FullName":
+                    sortColumn = "FullName";
+                    break;              
+            }
+            return string.Format("{0} {1}", sortColumn, pageRequest.SortDir);
+        }
+
+        public int CreateCustomer(CustomerAddEditDTO dto)
+        {
+            int res = 0;
+            var db = new PetaPoco.Database("connStringPandji");
+            try
+            {
+                using (var trz = db.GetTransaction())
+                {               
+                    string gender = "";
+                    if (dto.Gender == "True")
+                    {
+                        gender = "Pria";
+                    }
+                    else
+                    {
+                        gender = "Wanita";
+                    }
+                   
+                    string strdate = DateTime.UtcNow.ToString("MM/dd/yyyy");
+                    string stra = dto.DateBirth.ToString("MM/dd/yyyy");
+
+                    res = db.Execute("Insert Into Customer(CustomerId,FullName,Gender,PlaceBirth,DateBirth,Religion,HandPhoneNumber,Email,Occupation,Address,CreateDate,CreateBy,Status)Values" +
+                         "('" + Guid.NewGuid() + "','" + dto.FullName + "','" + gender + "','" + dto.PlaceBirth + "','" + stra + "'," +
+                         "'" + dto.Religion + "','" + dto.HandPhoneNumber + "','" + dto.Email + "','" + dto.Occupation + "','" + dto.Address + "','" + strdate + "','" + Guid.NewGuid() + "',1)");
+                    trz.Complete();
+                }
+            }
+            catch (Exception e)
+            {
+                String Error ="Error Message "+ e.Message;
+            
+                res = 0;
+            }
+
+            return res;
+        }
+    }
+}
